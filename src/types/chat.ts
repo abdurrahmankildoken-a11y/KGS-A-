@@ -36,18 +36,18 @@ export interface AIModel {
 
 export const AVAILABLE_MODELS: AIModel[] = [
   {
-    id: 'gemini-3.8-flash',
-    name: 'KGD 3.8 Flash',
-    tagline: 'Ultra Hızlı & Zeki',
+    id: 'gemini-3.1-flash-lite',
+    name: 'KGD Flash Turbo',
+    tagline: 'Anında Yanıt & Çok Hızlı',
     badge: 'Önerilen',
-    description: 'En son nesil çok modlu Gemini mimarisi. Kod, metin, analiz ve görsellerde ışık hızında yanıt.',
+    description: 'Minimum gecikme ve anında kelime akışı. Günlük sohbetler, kodlar ve hızlı yanıtlar için optimize edilmiştir.',
     isDefault: true,
   },
   {
-    id: 'gemini-3.1-flash-lite',
-    name: 'KGD Flash Lite',
-    tagline: 'Hafif & Seri',
-    badge: 'Hızlı',
-    description: 'Basit sorular, hızlı özetler ve anlık çeviriler için optimize edilmiş minimum gecikmeli model.',
+    id: 'gemini-3.8-flash',
+    name: 'KGD 3.8 Flash Pro',
+    tagline: 'Derin Analiz & Muhakeme',
+    badge: 'Kapsamlı',
+    description: 'En gelişmiş mantıksal muhakeme ve derin düşünme yeteneği. Karmaşık problemler ve detaylı projeler için.',
   },
 ];

@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 
 dotenv.config();
 
@@ -44,9 +44,11 @@ app.get('/api/health', (_req: Request, res: Response) => {
   });
 });
 
-// Helper to format messages for Gemini SDK
+// Helper to format and strictly validate messages for Gemini SDK
 function formatContents(messages: ChatMessage[]) {
-  return messages.map((m) => {
+  const validContents: Array<{ role: 'user' | 'model'; parts: any[] }> = [];
+
+  for (const m of messages) {
     const parts: any[] = [];
     if (m.image && m.image.data && m.image.mimeType) {
       parts.push({
@@ -56,17 +58,38 @@ function formatContents(messages: ChatMessage[]) {
         },
       });
     }
-    if (m.content) {
-      parts.push({ text: m.content });
+    const cleanContent = (m.content || '').trim();
+    if (cleanContent) {
+      parts.push({ text: cleanContent });
     }
-    return {
-      role: m.role === 'model' ? 'model' : 'user',
-      parts,
-    };
-  });
+
+    // Skip messages with no text and no image
+    if (parts.length === 0) continue;
+
+    const role: 'user' | 'model' = m.role === 'model' ? 'model' : 'user';
+
+    // Ensure strictly alternating roles required by Gemini API
+    const prev = validContents[validContents.length - 1];
+    if (prev && prev.role === role) {
+      // Merge parts with previous turn of same role
+      prev.parts.push(...parts);
+    } else {
+      validContents.push({ role, parts });
+    }
+  }
+
+  // Ensure conversation starts with 'user'
+  while (validContents.length > 0 && validContents[0].role !== 'user') {
+    validContents.shift();
+  }
+
+  return validContents;
 }
 
-// API: Chat streaming with Gemini (with automatic 503 high-demand fallback)
+const DEFAULT_INSTRUCTION =
+  "Sen KGD AI'sın. Google Gemini standartlarında, son derece zeki, nazik, hızlı ve yardımsever bir yapay zeka asistanısın. Kullanıcı ile samimi ve saygılı bir Türkçe ile konuşursun. Cevaplarını net, akıcı ve doğru ver. Kod bloklarında dil belirteci kullan.";
+
+// API: Ultra-fast Chat streaming with Gemini
 app.post('/api/chat/stream', async (req: Request, res: Response): Promise<void> => {
   if (!apiKey) {
     res.status(500).json({
@@ -77,7 +100,7 @@ app.post('/api/chat/stream', async (req: Request, res: Response): Promise<void> 
 
   const {
     messages = [],
-    model = 'gemini-3.8-flash',
+    model = 'gemini-3.1-flash-lite',
     systemInstruction,
   } = req.body as {
     messages: ChatMessage[];
@@ -85,57 +108,59 @@ app.post('/api/chat/stream', async (req: Request, res: Response): Promise<void> 
     systemInstruction?: string;
   };
 
-  if (!Array.isArray(messages) || messages.length === 0) {
-    res.status(400).json({ error: 'Mesaj listesi boş olamaz.' });
+  const contents = formatContents(messages);
+
+  if (contents.length === 0) {
+    res.status(400).json({ error: 'Geçerli bir mesaj bulunamadı.' });
     return;
   }
 
-  const contents = formatContents(messages);
-
-  const defaultInstruction =
-    "Sen KGD AI'sın. Google Gemini standartlarında, son derece zeki, nazik, hızlı, vizyoner ve kapsamlı bir yapay zeka asistanısın. Kullanıcı ile samimi, saygılı ve yardımsever bir dille konuşursun. Türkçe dilbilgisine ve akıcılığına azami özen göster. Kodlama, bilim, matematik, yaratıcı yazarlık, analiz, tasarım ve günlük sohbetlerde en yüksek doğruluk ve mükemmel markdown formatlama ile yanıt ver. Kod bloklarında dil belirteci kullan ve açıklayıcı yorumlar ekle.";
-
-  // Set SSE headers
-  res.setHeader('Content-Type', 'text/event-stream');
+  // Set SSE headers with proxy unbuffering
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders?.();
 
-  const primaryModel = model || 'gemini-3.8-flash';
-  const fallbackModel = 'gemini-3.1-flash-lite';
+  const targetModel = model || 'gemini-3.1-flash-lite';
+  const instruction = systemInstruction || DEFAULT_INSTRUCTION;
 
-  const tryStream = async (targetModel: string) => {
-    return await ai.models.generateContentStream({
-      model: targetModel,
-      contents,
-      config: {
-        systemInstruction: systemInstruction || defaultInstruction,
-      },
-    });
-  };
+  const runStream = async (modelName: string) => {
+    const config: any = {
+      systemInstruction: instruction,
+    };
 
-  try {
-    let stream;
-    try {
-      stream = await tryStream(primaryModel);
-    } catch (err: any) {
-      const errStr = JSON.stringify(err);
-      // If 503 / high demand or not found, try fallback
-      if (
-        (err?.status === 503 || errStr.includes('503') || errStr.includes('high demand') || errStr.includes('UNAVAILABLE')) &&
-        primaryModel !== fallbackModel
-      ) {
-        console.warn(`[KGD AI] ${primaryModel} yoğunlukta, ${fallbackModel} modeline geçiliyor...`);
-        stream = await tryStream(fallbackModel);
-      } else {
-        throw err;
-      }
+    if (modelName === 'gemini-3.8-flash') {
+      config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
     }
 
-    for await (const chunk of stream) {
+    const responseStream = await ai.models.generateContentStream({
+      model: modelName,
+      contents,
+      config,
+    });
+
+    for await (const chunk of responseStream) {
       const text = chunk.text;
       if (text) {
         res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        if (typeof (res as any).flush === 'function') {
+          (res as any).flush();
+        }
+      }
+    }
+  };
+
+  try {
+    try {
+      await runStream(targetModel);
+    } catch (primaryErr: any) {
+      console.warn(`[KGD AI] ${targetModel} hatası:`, primaryErr?.message);
+      if (targetModel !== 'gemini-3.1-flash-lite') {
+        console.log('[KGD AI] Hızlı yedek modele (gemini-3.1-flash-lite) geçiliyor...');
+        await runStream('gemini-3.1-flash-lite');
+      } else {
+        throw primaryErr;
       }
     }
 
@@ -154,30 +179,6 @@ app.post('/api/chat/stream', async (req: Request, res: Response): Promise<void> 
     }
     res.write(`data: ${JSON.stringify({ error: userMsg, done: true })}\n\n`);
     res.end();
-  }
-});
-
-// API: Quick title generator for chat session using fast lite model
-app.post('/api/chat/title', async (req: Request, res: Response): Promise<void> => {
-  const { prompt } = req.body;
-  if (!prompt || typeof prompt !== 'string') {
-    res.json({ title: 'Yeni Sohbet' });
-    return;
-  }
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite',
-      contents: `Şu kullanıcı mesajı için 3-5 kelimelik kısa, net bir Türkçe sohbet başlığı üret (tırnaksız): "${prompt.slice(0, 200)}"`,
-      config: {
-        systemInstruction: 'Sadece 3-5 kelimelik bir başlık döndür. Tırnak veya ek açıklama yazma.',
-      },
-    });
-
-    const title = (response.text || 'Yeni Sohbet').trim().replace(/^["']|["']$/g, '');
-    res.json({ title: title.slice(0, 35) });
-  } catch (e) {
-    res.json({ title: prompt.slice(0, 25) });
   }
 });
 

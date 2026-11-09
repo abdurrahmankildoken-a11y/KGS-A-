@@ -49,7 +49,9 @@ export default function App() {
   });
 
   const [selectedModel, setSelectedModel] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_KEY_MODEL) || AVAILABLE_MODELS[0].id;
+    const saved = localStorage.getItem(STORAGE_KEY_MODEL);
+    if (saved === 'gemini-3.8-flash' || saved === 'gemini-3.1-flash-lite') return saved;
+    return 'gemini-3.1-flash-lite';
   });
 
   const [userName, setUserName] = useState<string>(() => {
@@ -64,6 +66,22 @@ export default function App() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [hasBackend, setHasBackend] = useState<boolean | null>(null);
+
+  // Check if backend API is accessible (e.g. on AI Studio / Node vs static GitHub Pages)
+  useEffect(() => {
+    fetch('/api/health')
+      .then((res) => {
+        if (res.ok) {
+          setHasBackend(true);
+        } else {
+          setHasBackend(false);
+        }
+      })
+      .catch(() => {
+        setHasBackend(false);
+      });
+  }, []);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -218,20 +236,10 @@ export default function App() {
       })
     );
 
-    // Auto title if first message
+    // Instant clean auto-title if first message (no extra concurrent API request)
     if (isFirstMessage && text) {
-      fetch('/api/chat/title', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: text }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data?.title) {
-            handleRenameSession(activeSessionId, data.title);
-          }
-        })
-        .catch(() => {});
+      const cleanTitle = text.trim().slice(0, 30) + (text.trim().length > 30 ? '...' : '');
+      handleRenameSession(activeSessionId, cleanTitle);
     }
 
     // Scroll to bottom immediately
@@ -242,26 +250,47 @@ export default function App() {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
+    // Timeout safety net (only if NO chunks arrive within 25s)
+    let isAbortedByTimeout = false;
+    let timeoutId: NodeJS.Timeout | null = setTimeout(() => {
+      isAbortedByTimeout = true;
+      abortController.abort();
+    }, 25000);
+
     try {
-      // Prepare conversation history
-      const currentMessages = activeSession ? activeSession.messages : [];
-      const historyPayload = [...currentMessages, userMessage].map((m) => ({
-        role: m.role,
-        content: m.content,
-        image: m.image
+      // Prepare strictly valid conversation history:
+      // Only include previous messages that have actual content and no errors
+      const validHistory = (activeSession?.messages || [])
+        .filter((m) => (m.content || '').trim().length > 0 && !m.error)
+        .map((m) => ({
+          role: m.role,
+          content: m.content.trim(),
+          image: m.image
+            ? {
+                mimeType: m.image.mimeType,
+                data: m.image.data,
+              }
+            : undefined,
+        }));
+
+      // Append current user message
+      validHistory.push({
+        role: 'user',
+        content: text.trim(),
+        image: image
           ? {
-              mimeType: m.image.mimeType,
-              data: m.image.data,
+              mimeType: image.mimeType,
+              data: image.data,
             }
           : undefined,
-      }));
+      });
 
       const response = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: abortController.signal,
         body: JSON.stringify({
-          messages: historyPayload,
+          messages: validHistory,
           model: selectedModel,
           systemInstruction: systemPrompt || undefined,
         }),
@@ -302,6 +331,11 @@ export default function App() {
               throw new Error(data.error);
             }
             if (data.text) {
+              // As soon as first token arrives, clear the timeout!
+              if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+              }
               accumulatedText += data.text;
               // Update state with stream chunk
               setSessions((prev) =>
@@ -337,10 +371,12 @@ export default function App() {
         })
       );
     } catch (err: any) {
-      if (err.name === 'AbortError') {
+      if (err.name === 'AbortError' && !isAbortedByTimeout) {
         console.log('Kullanıcı yanıt oluşturmayı durdurdu.');
       } else {
         console.error('Akış hatası:', err);
+        const timeoutErrorMessage =
+          'Sunucudan yanıt alınamadı (zaman aşımı). Lütfen Tekrar Dene butonuna tıklayın.';
         setSessions((prev) =>
           prev.map((s) => {
             if (s.id !== activeSessionId) return s;
@@ -349,9 +385,12 @@ export default function App() {
                 ? {
                     ...m,
                     isStreaming: false,
-                    error:
-                      err.message ||
-                      'Sunucu ile bağlantı kurulamadı veya bir hata oluştu.',
+                    error: isAbortedByTimeout
+                      ? timeoutErrorMessage
+                      : err.message?.includes('404') || hasBackend === false
+                      ? 'GitHub Pages statik bir barındırma servisidir ve arka uç Node.js sunucusunu (server.ts) çalıştırmaz. KGD AI\'ın canlı tam sürümünü AI Studio bağlantısından hemen kullanabilirsiniz.'
+                      : err.message ||
+                        'Sunucu ile bağlantı kurulamadı veya bir hata oluştu.',
                   }
                 : m
             );
@@ -360,6 +399,7 @@ export default function App() {
         );
       }
     } finally {
+      if (timeoutId) clearTimeout(timeoutId);
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
@@ -435,6 +475,26 @@ export default function App() {
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenGoogleAuth={() => setIsGoogleModalOpen(true)}
         />
+
+        {/* GitHub Pages / Static Hosting Info Banner */}
+        {hasBackend === false && (
+          <div className="bg-gradient-to-r from-blue-900/40 via-purple-900/40 to-blue-900/40 border-b border-blue-500/30 px-4 py-2.5 text-xs text-neutral-200 flex flex-wrap items-center justify-between gap-2 shadow-md">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
+              <span>
+                <strong>GitHub Pages Modu:</strong> GitHub Pages sadece statik dosya barındırır. Arka uçtaki canlı Gemini sunucusuna bağlı tam sürüm AI Studio üzerinde 7/24 aktiftir.
+              </span>
+            </div>
+            <a
+              href="https://ais-pre-tpdc5j6aifjrncdky7wson-976869168609.europe-west2.run.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs transition-colors shadow-sm inline-flex items-center gap-1 shrink-0"
+            >
+              Canlı Tam Sürümü Aç ↗
+            </a>
+          </div>
+        )}
 
         {/* Chat Stream / Messages View */}
         <div className="flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-2">

@@ -130,9 +130,20 @@ export const MessageItem: React.FC<MessageItemProps> = ({
 
         {/* Error notification */}
         {message.error && (
-          <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/50 text-red-200 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-            <span>{message.error}</span>
+          <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-800/50 text-red-200 text-xs flex flex-wrap items-center justify-between gap-2 shadow-sm">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>{message.error}</span>
+            </div>
+            {onRegenerate && (
+              <button
+                onClick={onRegenerate}
+                className="px-3 py-1 rounded-lg bg-red-900/70 hover:bg-red-800 text-white text-xs font-medium transition-colors flex items-center gap-1.5 shrink-0 shadow-xs cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Tekrar Dene</span>
+              </button>
+            )}
           </div>
         )}
 
