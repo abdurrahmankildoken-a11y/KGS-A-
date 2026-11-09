@@ -1,0 +1,176 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: #131314;
+    color: #e3e3e3;
+    overflow-x: hidden;
+  }
+
+  code, pre, kbd {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Gemini glowing gradient text and animations */
+@keyframes geminiGlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.gemini-gradient-text {
+  background: linear-gradient(135deg, #4285f4 0%, #9b72cf 35%, #d96570 70%, #1a73e8 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: geminiGlow 8s ease infinite;
+}
+
+.gemini-shimmer {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.12) 50%, rgba(255, 255, 255, 0.03) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Custom scrollbars like Gemini */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Markdown typography styling */
+.prose-content p {
+  margin-top: 0.6em;
+  margin-bottom: 0.6em;
+  line-height: 1.68;
+}
+
+.prose-content p:first-child {
+  margin-top: 0;
+}
+
+.prose-content p:last-child {
+  margin-bottom: 0;
+}
+
+.prose-content h1, .prose-content h2, .prose-content h3, .prose-content h4 {
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin-top: 1.2em;
+  margin-bottom: 0.5em;
+}
+
+.prose-content h1 { font-size: 1.5rem; }
+.prose-content h2 { font-size: 1.3rem; }
+.prose-content h3 { font-size: 1.15rem; }
+
+.prose-content ul {
+  list-style-type: disc;
+  padding-left: 1.4rem;
+  margin: 0.6rem 0;
+}
+
+.prose-content ol {
+  list-style-type: decimal;
+  padding-left: 1.4rem;
+  margin: 0.6rem 0;
+}
+
+.prose-content li {
+  margin: 0.25rem 0;
+  line-height: 1.6;
+}
+
+.prose-content blockquote {
+  border-left: 3px solid #6366f1;
+  padding-left: 1rem;
+  margin: 0.8rem 0;
+  color: #9ca3af;
+  font-style: italic;
+  background: rgba(99, 102, 241, 0.05);
+  border-radius: 0 0.5rem 0.5rem 0;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
+.prose-content code:not(pre code) {
+  background: #282a2c;
+  color: #93c5fd;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.35rem;
+  font-size: 0.88em;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.prose-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.9em;
+  background: #1e1f20;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid #37393b;
+}
+
+.prose-content th {
+  background: #282a2c;
+  color: #f3f4f6;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid #37393b;
+}
+
+.prose-content td {
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: #d1d5db;
+}
+
+.prose-content tr:last-child td {
+  border-bottom: none;
+}
+
+.prose-content a {
+  color: #60a5fa;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+
+.prose-content a:hover {
+  color: #93c5fd;
+}
+
